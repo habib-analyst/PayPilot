@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PayPilot — your agentic commerce copilot</title>
+<link rel="stylesheet" href="/static/styles.css" />
+<!-- AG Grid Community (sponsor tech) for the order-history table -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/styles/ag-grid.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/styles/ag-theme-quartz.css" />
+<script src="https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/dist/ag-grid-community.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">🛒 <strong>PayPilot</strong> <span class="tag">PayPal AI Hackathon</span></div>
+    <div class="env">SANDBOX MODE — no real money moves</div>
+  </header>
+
+  <main>
+    <section class="chat-panel">
+      <div id="messages" class="messages"></div>
+      <div class="chips">
+        <button data-q="Find me noise-cancelling headphones under $200">🎧 Headphones under $200</button>
+        <button data-q="I need a gift for someone who likes smart home gadgets">🎁 Smart-home gift idea</button>
+        <button data-q="Show me laptop accessories for remote work">💻 Remote-work setup</button>
+      </div>
+      <form id="chat-form" class="input-row">
+        <input id="chat-input" type="text" placeholder="Tell PayPilot what you want to buy…" autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+    </section>
+
+    <aside class="side-panel">
+      <h3>Order history</h3>
+      <div id="orders-grid" class="ag-theme-quartz" style="height: 320px; width: 100%;"></div>
+      <p class="hint">Powered by PayPal Sandbox Orders API v2. Approve orders with your sandbox buyer account.</p>
+      <button id="reset-btn" class="ghost">Reset conversation</button>
+    </aside>
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
