@@ -1,3 +1,5 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)] [![GitHub stars](https://img.shields.io/github/stars/habib-analyst/PayPilot.svg)](https://github.com/habib-analyst/PayPilot)
+
 # PayPilot — your agentic commerce copilot
 
 **PayPal AI Hackathon 2026 entry.** Tell PayPilot what you want to buy in plain
