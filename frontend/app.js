@@ -56,6 +56,7 @@ const gridOptions = {
     { field: "product", headerName: "Product", flex: 1 },
     { field: "total", headerName: "Total", width: 90 },
     { field: "status", headerName: "Status", width: 150 },
+    { field: "mode", headerName: "Mode", width: 90 },
   ],
   rowData: [],
 };
@@ -69,5 +70,24 @@ async function refreshOrders() {
   } catch { /* ignore */ }
 }
 
-addMsg("👋 Hi! I'm PayPilot. Tell me what you want to buy and I'll find it, compare options, and check you out with PayPal — all in this chat.", "bot");
-refreshOrders();
+// Badge + greeting follow the server mode so a mocked run is disclosed
+// on screen, not just in the order table.
+async function init() {
+  let mode = "paypal-sandbox";
+  try {
+    const h = await (await fetch("/api/health")).json();
+    mode = h.mode || mode;
+  } catch { /* keep sandbox default */ }
+  if (mode === "mock-paypal") {
+    const badge = document.getElementById("mode-badge");
+    badge.textContent = "MOCKED CHECKOUT — PayPal sandbox unavailable in Pakistan — no real PayPal transaction";
+    badge.classList.add("mock");
+    document.getElementById("mode-hint").textContent =
+      "Mocked checkout: no PayPal call is made. Orders are simulated locally and labeled MOCK.";
+    addMsg("👋 Hi! I'm PayPilot. Tell me what you want to buy and I'll find it, compare options, and check you out — all in this chat. Note: mocked checkout is on (PayPal sandbox is unavailable in Pakistan), so orders here are simulated and labeled MOCK, not live PayPal transactions.", "bot");
+  } else {
+    addMsg("👋 Hi! I'm PayPilot. Tell me what you want to buy and I'll find it, compare options, and check you out with PayPal — all in this chat.", "bot");
+  }
+  refreshOrders();
+}
+init();

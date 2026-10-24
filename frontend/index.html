@@ -14,7 +14,7 @@
 <div class="app">
   <header>
     <div class="brand">🛒 <strong>PayPilot</strong> <span class="tag">PayPal AI Hackathon</span></div>
-    <div class="env">SANDBOX MODE — no real money moves</div>
+    <div class="env" id="mode-badge">SANDBOX MODE — no real money moves</div>
   </header>
 
   <main>
@@ -34,7 +34,7 @@
     <aside class="side-panel">
       <h3>Order history</h3>
       <div id="orders-grid" class="ag-theme-quartz" style="height: 320px; width: 100%;"></div>
-      <p class="hint">Powered by PayPal Sandbox Orders API v2. Approve orders with your sandbox buyer account.</p>
+      <p class="hint" id="mode-hint">Powered by PayPal Sandbox Orders API v2. Approve orders with your sandbox buyer account.</p>
       <button id="reset-btn" class="ghost">Reset conversation</button>
     </aside>
   </main>

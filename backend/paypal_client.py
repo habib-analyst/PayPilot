@@ -19,6 +19,8 @@ from __future__ import annotations
 import base64
 import os
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -47,6 +49,7 @@ class PayPalClient:
                 "Create a free sandbox app at https://developer.paypal.com "
                 "and copy them into your .env (see .env.example)."
             )
+        self.mode = "SANDBOX"
         self.brand_name = brand_name or os.getenv("PAYPAL_BRAND_NAME", "PayPilot Demo Store")
         self.return_url = return_url or os.getenv("PAYPAL_RETURN_URL", "https://example.com/return")
         self.cancel_url = cancel_url or os.getenv("PAYPAL_CANCEL_URL", "https://example.com/cancel")
@@ -167,4 +170,114 @@ class PayPalClient:
             "status": body.get("status"),
             "payer_email": (body.get("payer") or {}).get("email_address"),
             "captures": captures,
+        }
+
+
+class MockPayPalClient:
+    """Local stand-in for PayPalClient with the same public interface.
+
+    Used ONLY when PAYPILOT_MOCK_PAYPAL=1. PayPal sandbox signup is
+    unavailable in Pakistan, so no live PayPal run is possible from there.
+    No network call is made and no money moves: orders live in memory
+    and move CREATED -> APPROVED -> COMPLETED exactly like sandbox
+    orders. Every payload is sandbox-shaped but clearly fake (order ids
+    start with MOCK-, the payer is mock-buyer@example.test), and the
+    frontend labels every mock order MOCK. A mock run must never be
+    presented as a live PayPal run.
+    """
+
+    mode = "MOCK"
+
+    def __init__(self, public_url: str | None = None) -> None:
+        self.public_url = (
+            public_url or os.getenv("PAYPILOT_PUBLIC_URL", "http://localhost:8000")
+        ).rstrip("/")
+        self._orders: dict[str, dict[str, Any]] = {}
+
+    def create_order(
+        self,
+        items: list[dict[str, Any]],
+        currency: str = "USD",
+        intent: str = "CAPTURE",
+    ) -> dict[str, Any]:
+        """Create a mock order. Returns order id + local approval URL."""
+        total = sum(float(i["unit_price"]) * int(i.get("quantity", 1)) for i in items)
+        order_id = f"MOCK-{uuid.uuid4().hex[:12].upper()}"
+        self._orders[order_id] = {
+            "id": order_id,
+            "status": "CREATED",
+            "items": items,
+            "total": f"{total:.2f}",
+            "currency": currency,
+            "intent": intent,
+            "payer_email": None,
+            "capture_id": None,
+        }
+        return {
+            "order_id": order_id,
+            "status": "CREATED",
+            "approve_url": f"{self.public_url}/mock-approve?order_id={order_id}",
+            "total": f"{total:.2f}",
+            "currency": currency,
+        }
+
+    def get_order(self, order_id: str) -> dict[str, Any]:
+        order = self._orders.get(order_id)
+        if order is None:
+            raise PayPalError(f"unknown mock order {order_id}")
+        body: dict[str, Any] = {
+            "id": order["id"],
+            "status": order["status"],
+            "intent": order["intent"],
+            "purchase_units": [
+                {
+                    "amount": {
+                        "currency_code": order["currency"],
+                        "value": order["total"],
+                    }
+                }
+            ],
+        }
+        if order["payer_email"]:
+            body["payer"] = {"email_address": order["payer_email"]}
+        return body
+
+    def approve_order(self, order_id: str) -> dict[str, Any]:
+        """Local mock-approval step: stands in for the PayPal buyer login."""
+        order = self._orders.get(order_id)
+        if order is None:
+            raise PayPalError(f"unknown mock order {order_id}")
+        if order["status"] != "CREATED":
+            raise PayPalError(
+                f"mock order is {order['status']}, not CREATED; cannot approve"
+            )
+        order["status"] = "APPROVED"
+        order["payer_email"] = "mock-buyer@example.test"
+        return {"order_id": order_id, "status": "APPROVED"}
+
+    def capture_order(self, order_id: str) -> dict[str, Any]:
+        """Capture an APPROVED mock order. Returns mock receipt data."""
+        order = self._orders.get(order_id)
+        if order is None:
+            raise PayPalError(f"unknown mock order {order_id}")
+        if order["status"] != "APPROVED":
+            raise PayPalError(
+                f"mock order is {order['status']}, not APPROVED. "
+                "The buyer must approve it at the approval URL first."
+            )
+        order["status"] = "COMPLETED"
+        order["capture_id"] = f"MOCKCAP-{uuid.uuid4().hex[:12].upper()}"
+        return {
+            "order_id": order_id,
+            "status": "COMPLETED",
+            "payer_email": order["payer_email"],
+            "captures": [
+                {
+                    "capture_id": order["capture_id"],
+                    "status": "COMPLETED",
+                    "amount": order["total"],
+                    "currency": order["currency"],
+                    "create_time": datetime.now(timezone.utc).isoformat(),
+                }
+            ],
         }

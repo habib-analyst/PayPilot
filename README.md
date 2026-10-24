@@ -39,6 +39,22 @@ docker compose up --build
 
 Open **http://localhost:8000** and start chatting.
 
+### Mocked checkout mode (no PayPal account needed)
+
+PayPal sandbox signup is unavailable in Pakistan, so the demo can run fully
+mocked — same agent loop, same tools, simulated PayPal:
+
+```bash
+PAYPILOT_MOCK_PAYPAL=1 uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+Mock mode simulates Orders API v2 locally (`MOCK-` order ids, a local
+approval page, `MOCK` on every order row and a `MOCKED CHECKOUT` badge).
+No PayPal call is made, and a mock run is never presented as a live PayPal
+run. Without an `LLM_API_KEY` the deterministic scripted dialogue runs
+instead of the real LLM; with a key, the real LLM drives the same mocked
+checkout.
+
 ### Get the free keys (5 minutes)
 
 **PayPal sandbox**

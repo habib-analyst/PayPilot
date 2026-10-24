@@ -10,17 +10,22 @@ Safety rules enforced in code (not just in the prompt):
 - create_checkout requires an explicit user confirmation naming the product id.
 - capture_payment only runs after the PayPal order status is APPROVED.
 - Every tool result is real: catalog lookups and PayPal API responses only.
+  In mock mode (PAYPILOT_MOCK_PAYPAL=1) PayPal results are simulated by
+  MockPayPalClient and every order row is labeled MOCK; in scripted mode
+  (no LLM_API_KEY) the dialogue is scripted but still driven by tool
+  results, never invented facts.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 
 from . import catalog
-from .llm import LLM, SYSTEM_PROMPT, fmt_tool_result
-from .paypal_client import PayPalClient, PayPalError
+from .llm import LLM, SYSTEM_PROMPT, ScriptedLLM, fmt_tool_result
+from .paypal_client import MockPayPalClient, PayPalClient, PayPalError
 
 MAX_STEPS = 8
 
@@ -119,10 +124,33 @@ class OrderStore:
 
 class Agent:
     def __init__(self) -> None:
-        self.llm = LLM()
-        self.paypal = PayPalClient()
+        # Real LLM stays the default whenever a key is present. The
+        # scripted dialogue is only a fallback for key-less runs (or when
+        # explicitly forced) so the demo flow works without any LLM key.
+        if os.getenv("PAYPILOT_SCRIPTED_LLM") == "1" or not os.getenv("LLM_API_KEY"):
+            self.llm = ScriptedLLM()
+        else:
+            self.llm = LLM()
+        # Mocked checkout when PayPal sandbox is unavailable (Pakistan):
+        # same interface as PayPalClient, simulated locally, labeled MOCK.
+        if os.getenv("PAYPILOT_MOCK_PAYPAL") == "1":
+            self.paypal = MockPayPalClient()
+        else:
+            self.paypal = PayPalClient()
+        self.mock_mode = isinstance(self.paypal, MockPayPalClient)
         self.store = OrderStore()
-        self.history: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # In mock mode the model must describe the checkout honestly: the
+        # approval link goes to a local mock page, never to PayPal.
+        self.system_prompt = SYSTEM_PROMPT
+        if self.mock_mode:
+            self.system_prompt += (
+                "\nMocked checkout is ON: PayPal sandbox is unavailable, so "
+                "orders are simulated locally and labeled MOCK. Always tell "
+                "the user the checkout is mocked — never call it a live "
+                "PayPal transaction — and point them at the mock approval "
+                "link when an order is created."
+            )
+        self.history: list[dict] = [{"role": "system", "content": self.system_prompt}]
 
     # ---------- tool implementations ----------
 
@@ -146,6 +174,7 @@ class Agent:
             self.store.add({
                 "product": p["name"], "total": order["total"], "currency": order["currency"],
                 "paypal_order_id": order["order_id"], "status": "AWAITING_APPROVAL",
+                "mode": self.paypal.mode,
             })
             return {
                 "order_id": order["order_id"],
@@ -196,9 +225,26 @@ class Agent:
             if not tool_calls:
                 break
 
-            # keep a clean assistant message (without tool_calls) for history
-            self.history.append({"role": "assistant", "content": assistant_text or "(calling tools…)"})
+            # Keep the assistant message WITH its tool calls, and give every
+            # call a non-empty id: the OpenAI-compatible endpoint pairs each
+            # tool result with the call that produced it, and current Gemini
+            # models reject tool results whose call id is missing/empty
+            # (400: function_response.name cannot be empty). The old code
+            # dropped tool_calls from history and used tc.get("id", fname),
+            # which still yields "" when the model returns an empty id.
+            calls = []
             for tc in tool_calls:
+                tc = dict(tc)
+                fn = tc.get("function") or {}
+                if not tc.get("id"):
+                    tc["id"] = fn.get("name", "tool")
+                calls.append(tc)
+            self.history.append({
+                "role": "assistant",
+                "content": assistant_text or "(calling tools…)",
+                "tool_calls": calls,
+            })
+            for tc in calls:
                 fname = tc["function"]["name"]
                 try:
                     fargs = json.loads(tc["function"].get("arguments") or "{}")
@@ -208,7 +254,7 @@ class Agent:
                 events.append({"tool": fname, "args": fargs, "result": result})
                 self.history.append({
                     "role": "tool",
-                    "tool_call_id": tc.get("id", fname),
+                    "tool_call_id": tc["id"],
                     "content": fmt_tool_result(fname, result),
                 })
         else:
@@ -229,4 +275,4 @@ class Agent:
         return self.store.all()
 
     def reset(self) -> None:
-        self.history = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.history = [{"role": "system", "content": self.system_prompt}]
